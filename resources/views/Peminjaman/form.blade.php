@@ -34,9 +34,31 @@
                             <input type="hidden" name="sesi" value="{{ $sesi }}">
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-calendar"></i></span>
-                                <input type="date" class="form-control" name="tanggal" value="{{ $tanggal ?? now()->toDateString() }}" onchange="this.form.submit()" required>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    name="tanggal" 
+                                    id="tanggal"
+                                    value="{{ $tanggal ?? now()->toDateString() }}" 
+                                    required
+                                    readonly
+                                >
                             </div>
                         </form>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const bookedDates = @json($bookedDates ?? []);
+                            flatpickr("#tanggal", {
+                                dateFormat: "Y-m-d",
+                                minDate: "{{ $tanggal_lainnya ?? now()->toDateString() }}",
+                                disable: bookedDates,
+                                onChange: function(selectedDates, dateStr, instance) {
+                                    // Optional: submit form otomatis jika ingin
+                                    // instance.input.form.submit();
+                                }
+                            });
+                        });
+                        </script>
 
                         {{-- Form utama peminjaman --}}
                         <form class="row g-3" action="{{ isset($peminjaman) ? route('peminjaman.update', $peminjaman->id) : route('peminjaman.store') }}" method="POST">
@@ -78,9 +100,10 @@
                                     <option value="">-- Pilih Ruangan --</option>
                                     @foreach($ruangans as $item)
                                         <option value="{{ $item->id }}" data-kapasitas="{{ $item->kapasitas }}"
-                                            {{ $item->tidak_tersedia ? 'disabled style=background:#eee;color:#aaa;' : '' }}>
+                                            {{ (isset($peminjaman) && $peminjaman->ruangan_id == $item->id) ? 'selected' : '' }}
+                                            {{ $item->tidak_tersedia && (!isset($peminjaman) || $peminjaman->ruangan_id != $item->id) ? 'disabled style=background:#eee;color:#aaa;' : '' }}>
                                             {{ $item->nama }} (Kapasitas: {{ $item->kapasitas }})
-                                            @if($item->tidak_tersedia) - Tidak Tersedia @endif
+                                            @if($item->tidak_tersedia && (!isset($peminjaman) || $peminjaman->ruangan_id != $item->id)) - Tidak Tersedia @endif
                                         </option>
                                     @endforeach
                                 </select>
@@ -103,8 +126,8 @@
                                 <label class="form-label">Sesi yang dipilih</label>
                                 <input type="text" class="form-control bg-light" value="{{ ucfirst($sesi) }} 
                                     @if($sesi == 'pagi') (08:00-12:00)
-                                    @elseif($sesi == 'siang') (13:00-17:00)
-                                    @elseif($sesi == 'malam') (18:00-22:00)
+                                    @elseif($sesi == 'siang') (12:30-14:30)
+                                    @elseif($sesi == 'sore' || $sesi == 'malam') (15:00-17:30)
                                     @endif" readonly>
                                 <input type="hidden" name="sesi" value="{{ $sesi }}">
                                 <input type="hidden" name="tanggal" value="{{ $tanggal }}">

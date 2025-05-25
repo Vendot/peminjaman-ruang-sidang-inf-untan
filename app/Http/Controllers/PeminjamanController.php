@@ -6,6 +6,7 @@ use App\Models\Ruangan;
 use App\Models\Peminjaman;
 use App\Models\PeminjamanView;
 use Illuminate\Http\Request;
+use App\Http\Requests\StorePeminjamanRequest;
 use App\Models\StatusRuangan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -56,32 +57,33 @@ class PeminjamanController extends Controller
             $ruangan->tidak_tersedia = $isBooked;
         }
 
-        return view('peminjaman.form', compact('ruangans', 'sesi', 'tanggal'));
+        // Ambil semua tanggal yang sudah penuh untuk sesi ini
+        $bookedDates = \App\Models\Peminjaman::where('jam_mulai', $this->getSessionTime($sesi)[0])
+            ->pluck('tgl_mulai')
+            ->toArray();
+
+        // dd($bookedDates);
+        return view('peminjaman.form', compact('ruangans', 'sesi', 'tanggal', 'bookedDates'));
     }
+
+
+
 
     private function getSessionTime($sesi)
     {
         $sessionTimes = [
             'pagi' => ['08:00', '12:00'],
-            'siang' => ['13:00', '17:00'],
-            'malam' => ['18:00', '22:00']
+            'siang' => ['12:30', '14:30'],
+            'sore' => ['15.00', '17.30']
         ];
 
         return $sessionTimes[$sesi] ?? null;
     }
 
-    public function store(Request $request)
+    public function store(StorePeminjamanRequest $request)
     {
         try {
             DB::beginTransaction();
-
-            $request->validate([
-                'ruangan_id' => 'required',
-                'mahasiswa_nim' => 'required',
-                'tanggal' => 'required|date',
-                'sesi' => 'required|in:pagi,siang,malam',
-                'tujuan' => 'required',
-            ]);
 
             $sessionTime = $this->getSessionTime($request->sesi);
             if (!$sessionTime) {
@@ -135,7 +137,29 @@ class PeminjamanController extends Controller
 
     public function edit(Peminjaman $peminjaman)
     {
-        return view('peminjaman.form', compact('peminjaman'));
+        $ruangans = Ruangan::all();
+        $jam = \Carbon\Carbon::createFromFormat('H:i:s', $peminjaman->jam_mulai)->format('H:i');
+        if ($jam == '08:00') {
+            $sesi = 'pagi';
+        } elseif ($jam == '12:30') {
+            $sesi = 'siang';
+        } elseif ($jam == '15:00') {
+            $sesi = 'sore'; // atau 'malam' jika memang jam 18:00 itu malam
+        }
+
+        $tanggal = $peminjaman->tgl_mulai;
+
+        // Cek ketersediaan tiap ruangan untuk tanggal dan sesi ini
+        foreach ($ruangans as $ruangan) {
+            $isBooked = Peminjaman::where('ruangan_id', $ruangan->id)
+                ->where('tgl_mulai', $tanggal)
+                ->where('jam_mulai', $peminjaman->jam_mulai)
+                ->where('id', '!=', $peminjaman->id)
+                ->exists();
+            $ruangan->tidak_tersedia = $isBooked;
+        }
+
+        return view('peminjaman.form', compact('peminjaman', 'ruangans', 'sesi', 'tanggal'));
     }
 
     public function update(Request $request, Peminjaman $peminjaman)
@@ -147,7 +171,7 @@ class PeminjamanController extends Controller
                 'ruangan_id' => 'required',
                 'mahasiswa_nim' => 'required',
                 'tanggal' => 'required|date',
-                'sesi' => 'required|in:pagi,siang,malam',
+                'sesi' => 'required|in:pagi,siang,sore',
                 'tujuan' => 'required',
             ]);
 
@@ -165,6 +189,7 @@ class PeminjamanController extends Controller
                 ->where('id', '!=', $peminjaman->id)
                 ->first();
 
+
             if ($existingPeminjaman) {
                 return redirect()->back()->with('error', 'Ruangan sudah dipinjam pada sesi tersebut');
             }
@@ -180,7 +205,7 @@ class PeminjamanController extends Controller
             ]);
 
             DB::commit();
-            return redirect()->route('peminjaman.index')->with('success', 'Peminjaman berhasil diperbarui');
+            return redirect()->route('peminjaman.riwayat')->with('success', 'Peminjaman berhasil diperbarui');
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', $e->getMessage());
@@ -199,7 +224,7 @@ class PeminjamanController extends Controller
             $peminjaman->delete();
 
             DB::commit();
-            return redirect()->route('peminjaman.index');
+            return redirect()->route('peminjaman.riwayat')->with('success', 'Peminjaman berhasil dihapus');
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', $e->getMessage());
@@ -210,6 +235,7 @@ class PeminjamanController extends Controller
     {
         $peminjamans = Peminjaman::where('mahasiswa_nim', auth()->user()->nim)->get();
         return view('peminjaman.index', compact('peminjamans'));
+
     }
 
 }
